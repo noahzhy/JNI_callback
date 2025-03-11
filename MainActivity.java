@@ -11,7 +11,6 @@ import com.example.testing.databinding.ActivityMainBinding;
 
 public class MainActivity extends AppCompatActivity {
 
-    // Used to load the 'testing' library on application startup.
     static {
         System.loadLibrary("sdk");
     }
@@ -31,21 +30,16 @@ public class MainActivity extends AppCompatActivity {
         TextView tv = binding.sampleText;
         tv.setText(stringFromJNI());
 
-        Sdk.getInstance().nativeDownload("xx.png", new OnSubProgressListener() {
+        Sdk.getInstance().download("xx.png", new OnSubProgressListener() {
             @Override
-            public int onProgressChange(long total, long already) {
-                Log.d("MainActivity", "total: " + total + ", already: " + already);
+            public int onProgressChange(long already, long total) {
+                Log.d("MainActivity", "dowload progress: " + already + "/" + total);
                 return 0;
             }
         });
 
     }
 
-    /**
-     * A native method that is implemented by the 'testing' native library,
-     * which is packaged with this application.
-     */
     public native String stringFromJNI();
-    // public native void callbackFromJNI();
 
 }

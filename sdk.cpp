@@ -1,7 +1,7 @@
 #include <android/log.h>
 #include <jni.h>
-#include <string>
 #include <unistd.h>
+#include <string>
 
 JavaVM* g_VM;
 
@@ -36,34 +36,33 @@ void* download(void* p) {
     // 通过强转后的jcallback 获取到要回调的类
     jclass javaClass = env->GetObjectClass(jcallback);
     if (javaClass == nullptr) {
-        __android_log_print(ANDROID_LOG_ERROR, "nativeDownload", "Unable to find class");
-        if(mNeedDetach) {
-            __android_log_print(ANDROID_LOG_ERROR, "nativeDownload", "DetachCurrentThread");
+        __android_log_print(ANDROID_LOG_ERROR, "download", "Unable to find class");
+        if (mNeedDetach) {
+            __android_log_print(ANDROID_LOG_ERROR, "download", "DetachCurrentThread");
             g_VM->DetachCurrentThread();
         }
-        env->DeleteGlobalRef(jcallback); // 释放全局引用
-        return nullptr; // 添加返回，防止继续执行
+        env->DeleteGlobalRef(jcallback);  // 释放全局引用
+        return nullptr;                   // 添加返回，防止继续执行
     }
 
-    //获取要回调的方法ID
+    // 获取要回调的方法ID
     jmethodID javaCallbackId = env->GetMethodID(javaClass, "onProgressChange", "(JJ)I");
     if (javaCallbackId == nullptr) {
-        __android_log_print(ANDROID_LOG_ERROR, "nativeDownload", "Unable to find method:onProgressCallBack");
-        if(mNeedDetach) {
+        __android_log_print(ANDROID_LOG_ERROR, "download", "Unable to find method:onProgressCallBack");
+        if (mNeedDetach) {
             g_VM->DetachCurrentThread();
         }
-        env->DeleteGlobalRef(jcallback); // 释放全局引用
-        return nullptr; // 添加返回，防止继续执行
+        env->DeleteGlobalRef(jcallback);  // 释放全局引用
+        return nullptr;                   // 添加返回，防止继续执行
     }
-
 
     for (int i = 0; i <= 100; i += 10) {
         // 可以定期向Java层报告进度
         env->CallIntMethod(jcallback, javaCallbackId, i, 100);
-        
+
         // 模拟耗时工作
-        sleep(1); // 如需要暂停，可以使用sleep
-        
+        sleep(1);  // 如需要暂停，可以使用sleep
+
         // 检查是否需要中断操作
         // if (shouldCancel) break;
     }
@@ -79,15 +78,14 @@ void* download(void* p) {
     return nullptr;
 }
 
-
 extern "C" JNIEXPORT void JNICALL
-Java_com_example_testing_Sdk_nativeDownload(JNIEnv* env, jobject, jstring jpath, jobject jcallback) {
+Java_com_example_testing_Sdk_download(JNIEnv* env, jobject, jstring jpath, jobject jcallback) {
     // JavaVM是虚拟机在JNI中的表示，等下再其他线程回调java层需要用到
     env->GetJavaVM(&g_VM);
     // 只创建一个全局引用
     jobject callback = env->NewGlobalRef(jcallback);
 
-    __android_log_print(ANDROID_LOG_ERROR, "nativeDownload", "path: %s", env->GetStringUTFChars(jpath, nullptr));
+    __android_log_print(ANDROID_LOG_ERROR, "download", "path: %s", env->GetStringUTFChars(jpath, nullptr));
 
     // 把接口传进去, 或者保存在一个结构体里面的属性,  进行传递也可以
     pthread_t thread_id;
