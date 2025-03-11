@@ -3,8 +3,10 @@ package com.example.testing;
 import androidx.appcompat.app.AppCompatActivity;
 
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.TextView;
 
+import com.example.testing.Sdk.OnSubProgressListener;
 import com.example.testing.databinding.ActivityMainBinding;
 
 public class MainActivity extends AppCompatActivity {
@@ -29,17 +31,13 @@ public class MainActivity extends AppCompatActivity {
         TextView tv = binding.sampleText;
         tv.setText(stringFromJNI());
 
-        sdk = new Sdk();
-
-        sdk.nativeDownload(
-                "xxx.jpg",
-                new Sdk.OnSubProgressListener() {
-                    @Override
-                    public int onProgressChange(long total, long already) {
-                        return 0;
-                    }
-                }
-        );
+        Sdk.getInstance().nativeDownload("xx.png", new OnSubProgressListener() {
+            @Override
+            public int onProgressChange(long total, long already) {
+                Log.d("MainActivity", "total: " + total + ", already: " + already);
+                return 0;
+            }
+        });
 
     }
 
@@ -48,6 +46,6 @@ public class MainActivity extends AppCompatActivity {
      * which is packaged with this application.
      */
     public native String stringFromJNI();
-//    public native void callbackFromJNI();
+    // public native void callbackFromJNI();
 
 }

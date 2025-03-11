@@ -1,7 +1,9 @@
+#include <android/log.h>
 #include <jni.h>
 #include <string>
+#include <unistd.h>
 
-#include <android/log.h>
+JavaVM* g_VM;
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_example_testing_MainActivity_stringFromJNI(
@@ -9,86 +11,88 @@ Java_com_example_testing_MainActivity_stringFromJNI(
     jobject /* this */) {
     std::string hello = "Hello from C++";
     int numb = 11;
-    // return env->NewStringUTF(hello.c_str());
     return env->NewStringUTF((hello + std::to_string(numb)).c_str());
 }
 
-JavaVM* g_VM;
-
-
-
-// 在此处跑在子线程中, 并回调到java层
-void download(void* p) {
-    bool mNeedDetach;
+void* download(void* p) {
+    bool mNeedDetach = JNI_FALSE;
 
     if (p == nullptr)
-        return;
+        return nullptr;
 
     JNIEnv* env;
     // 获取当前native线程是否有没有被附加到jvm环境中
     int getEnvStat = g_VM->GetEnv((void**)&env, JNI_VERSION_1_6);
-    // 如果没有附加到jvm环境中
-
     if (getEnvStat == JNI_EDETACHED) {
-        // 如果没有,  主动附加到jvm环境中, 获取到env
+        // 如果没有， 主动附加到jvm环境中，获取到env
         if (g_VM->AttachCurrentThread(&env, nullptr) != 0) {
-            return;
+            return nullptr;
         }
-
         mNeedDetach = JNI_TRUE;
     }
     // 强转回来
-    //  jcallback = (jobject)p;
-    jobject jcallback = (jobject)p;
+    auto jcallback = (jobject)p;
 
     // 通过强转后的jcallback 获取到要回调的类
     jclass javaClass = env->GetObjectClass(jcallback);
-
     if (javaClass == nullptr) {
         __android_log_print(ANDROID_LOG_ERROR, "nativeDownload", "Unable to find class");
-        // ???
-        g_VM->DetachCurrentThread();
-        env = nullptr;
-        return;
+        if(mNeedDetach) {
+            __android_log_print(ANDROID_LOG_ERROR, "nativeDownload", "DetachCurrentThread");
+            g_VM->DetachCurrentThread();
+        }
+        env->DeleteGlobalRef(jcallback); // 释放全局引用
+        return nullptr; // 添加返回，防止继续执行
     }
 
-    // 获取要回调的方法ID
-    //  jmethodID javaCallbackId = env->GetMethodID(&env, javaClass, "onProgressChange", "(JJ)I");
+    //获取要回调的方法ID
     jmethodID javaCallbackId = env->GetMethodID(javaClass, "onProgressChange", "(JJ)I");
     if (javaCallbackId == nullptr) {
-        __android_log_print(ANDROID_LOG_ERROR, "nativeDownload", "Unable to find method");
-        return;
+        __android_log_print(ANDROID_LOG_ERROR, "nativeDownload", "Unable to find method:onProgressCallBack");
+        if(mNeedDetach) {
+            g_VM->DetachCurrentThread();
+        }
+        env->DeleteGlobalRef(jcallback); // 释放全局引用
+        return nullptr; // 添加返回，防止继续执行
     }
-    // 执行回调
-    env->CallIntMethod(jcallback, javaCallbackId, 1, 1);
+
+
+    for (int i = 0; i <= 100; i += 10) {
+        // 可以定期向Java层报告进度
+        env->CallIntMethod(jcallback, javaCallbackId, i, 100);
+        
+        // 模拟耗时工作
+        sleep(1); // 如需要暂停，可以使用sleep
+        
+        // 检查是否需要中断操作
+        // if (shouldCancel) break;
+    }
+
+    // // 执行回调
+    // env->CallIntMethod(jcallback, javaCallbackId, 1, 1);
+    jcallback = nullptr;
 
     // 释放当前线程
     if (mNeedDetach) {
         g_VM->DetachCurrentThread();
     }
-    env = nullptr;
-
-    // 释放你的全局引用的接口, 生命周期自己把控
-    env->DeleteGlobalRef(jcallback);
+    return nullptr;
 }
-
-
-
 
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_testing_Sdk_nativeDownload(JNIEnv* env, jobject, jstring jpath, jobject jcallback) {
+    // JavaVM是虚拟机在JNI中的表示，等下再其他线程回调java层需要用到
     env->GetJavaVM(&g_VM);
-
-    if (jpath == nullptr || jcallback == nullptr) {
-        return;
-    }
+    // 只创建一个全局引用
     jobject callback = env->NewGlobalRef(jcallback);
 
     __android_log_print(ANDROID_LOG_ERROR, "nativeDownload", "path: %s", env->GetStringUTFChars(jpath, nullptr));
-    // 把接口传进去, 或者保存在一个结构体里面的属性,  进行传递也可以
-    // pthread_create(xxx, xxx, download, callback);
-    pthread_t thread;
-    pthread_create(&thread, nullptr, reinterpret_cast<void *(*)(void *)>(download), callback);
-}
 
+    // 把接口传进去, 或者保存在一个结构体里面的属性,  进行传递也可以
+    pthread_t thread_id;
+    if ((pthread_create(&thread_id, nullptr, download, callback)) != 0) {
+        env->DeleteGlobalRef(callback);  // 如果创建线程失败，释放全局引用
+        return;
+    }
+}
