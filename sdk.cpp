@@ -4,10 +4,11 @@
 #include <string>
 #include <pthread.h>
 
-JavaVM* g_VM;
+JavaVM* g_VM = nullptr;
 static jclass g_pointClass = nullptr;
 
 jint JNI_OnLoad(JavaVM* vm, void *reserved) {
+    g_VM = vm;
     JNIEnv* env = nullptr;
     if (vm->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK)
         return JNI_ERR;
@@ -18,44 +19,39 @@ jint JNI_OnLoad(JavaVM* vm, void *reserved) {
         return JNI_ERR;
     }
     g_pointClass = (jclass)env->NewGlobalRef(localPointClass);
+    env->DeleteLocalRef(localPointClass);  // 释放局部引用
     return JNI_VERSION_1_6;
 }
 
-
 void* download(void* p) {
-    bool mNeedDetach = JNI_FALSE;
-
     if (p == nullptr)
         return nullptr;
 
-    JNIEnv* env;
+    JNIEnv* env = nullptr;
+    bool needDetach = false;
     // 获取当前 native 线程是否已附加到 jvm 环境中
-    int getEnvStat = g_VM->GetEnv((void**)&env, JNI_VERSION_1_6);
-    if (getEnvStat == JNI_EDETACHED) {
-        if (g_VM->AttachCurrentThread(&env, nullptr) != 0) {
+    if (g_VM->GetEnv((void**)&env, JNI_VERSION_1_6) == JNI_EDETACHED) {
+        if (g_VM->AttachCurrentThread(&env, nullptr) != 0)
             return nullptr;
-        }
-        mNeedDetach = JNI_TRUE;
+        needDetach = true;
     }
-    auto jcallback = (jobject)p;
+
+    jobject jcallback = (jobject)p;
     jclass javaClass = env->GetObjectClass(jcallback);
     if (javaClass == nullptr) {
         __android_log_print(ANDROID_LOG_ERROR, "download", "Unable to find class");
-        if (mNeedDetach) {
-            __android_log_print(ANDROID_LOG_ERROR, "download", "DetachCurrentThread");
-            g_VM->DetachCurrentThread();
-        }
         env->DeleteGlobalRef(jcallback);
+        if (needDetach)
+            g_VM->DetachCurrentThread();
         return nullptr;
     }
-
+    
     jmethodID javaCallbackId = env->GetMethodID(javaClass, "onProgressChange", "(Lcom/example/testing/Sdk$Point;)V");
     if (javaCallbackId == nullptr) {
         __android_log_print(ANDROID_LOG_ERROR, "download", "Unable to find method:onProgressChange");
-        if (mNeedDetach) {
-            g_VM->DetachCurrentThread();
-        }
         env->DeleteGlobalRef(jcallback);
+        if (needDetach)
+            g_VM->DetachCurrentThread();
         return nullptr;
     }
 
@@ -63,10 +59,9 @@ void* download(void* p) {
     jclass pointClass = g_pointClass;
     if (pointClass == nullptr) {
         __android_log_print(ANDROID_LOG_ERROR, "download", "Global reference for Sdk$Point is null");
-        if (mNeedDetach) {
-            g_VM->DetachCurrentThread();
-        }
         env->DeleteGlobalRef(jcallback);
+        if (needDetach)
+            g_VM->DetachCurrentThread();
         return nullptr;
     }
 
@@ -74,30 +69,41 @@ void* download(void* p) {
     jfieldID yFieldId = env->GetFieldID(pointClass, "y", "I");
 
     jobject point = env->AllocObject(pointClass);
-    env->SetIntField(point, xFieldId, 1);
-    env->SetIntField(point, yFieldId, 1);
+    if (point == nullptr) {
+        __android_log_print(ANDROID_LOG_ERROR, "download", "Unable to allocate Sdk$Point object");
+        env->DeleteGlobalRef(jcallback);
+        if (needDetach)
+            g_VM->DetachCurrentThread();
+        return nullptr;
+    }
+    // env->SetIntField(point, xFieldId, 1);
+    // env->SetIntField(point, yFieldId, 1);
 
     for (int i = 0; i <= 100; i += 10) {
+        env->SetIntField(point, xFieldId, i);
+        env->SetIntField(point, yFieldId, i);
         env->CallVoidMethod(jcallback, javaCallbackId, point);
         sleep(1);
     }
 
     env->DeleteGlobalRef(jcallback);
-    if (mNeedDetach) {
+    if (needDetach)
         g_VM->DetachCurrentThread();
-    }
     return nullptr;
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_testing_Sdk_download(JNIEnv* env, jobject, jstring jpath, jobject jcallback) {
     env->GetJavaVM(&g_VM);
+
+    // 获取字符串后及时释放，避免泄露资源
+    const char* path = env->GetStringUTFChars(jpath, nullptr);
+    __android_log_print(ANDROID_LOG_ERROR, "download", "path: %s", path);
+    env->ReleaseStringUTFChars(jpath, path);
+
     jobject callback = env->NewGlobalRef(jcallback);
-
-    __android_log_print(ANDROID_LOG_ERROR, "download", "path: %s", env->GetStringUTFChars(jpath, nullptr));
-
     pthread_t thread_id;
-    if ((pthread_create(&thread_id, nullptr, download, callback)) != 0) {
+    if (pthread_create(&thread_id, nullptr, download, callback) != 0) {
         env->DeleteGlobalRef(callback);
         return;
     }
