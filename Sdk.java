@@ -5,7 +5,11 @@ public class Sdk {
     public Sdk() {
     }
 
-    // 单例
+    public static class Point {
+        public int x;
+        public int y;
+    }
+
     private static class SdkHodler {
         static Sdk instance = new Sdk();
     }
@@ -14,12 +18,10 @@ public class Sdk {
         return SdkHodler.instance;
     }
 
-    // 回调到各个线程
     public interface OnSubProgressListener {
-        public int onProgressChange(long already, long total);
+        void onProgressChange(Point point);
     };
 
-    // 调到C层的方法
     protected native void download(String downloadPath, OnSubProgressListener listener);
 
 }

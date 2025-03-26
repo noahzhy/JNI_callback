@@ -2,8 +2,13 @@ package com.example.testing;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.graphics.Bitmap;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.util.Log;
+import android.widget.ImageView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import com.example.testing.Sdk.OnSubProgressListener;
@@ -15,9 +20,12 @@ public class MainActivity extends AppCompatActivity {
         System.loadLibrary("sdk");
     }
 
-    private Sdk sdk;
+    private Sdk sdk = new Sdk();
 
     private ActivityMainBinding binding;
+
+    private ProgressBar progressBar;
+    private ImageView iv_img;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -26,20 +34,19 @@ public class MainActivity extends AppCompatActivity {
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        // Example of a call to a native method
-        TextView tv = binding.sampleText;
-        tv.setText(stringFromJNI());
+        progressBar = findViewById(R.id.progressBar);
+        iv_img = findViewById(R.id.iv_img);
 
-        Sdk.getInstance().download("xx.png", new OnSubProgressListener() {
-            @Override
-            public int onProgressChange(long already, long total) {
-                Log.d("MainActivity", "dowload progress: " + already + "/" + total);
-                return 0;
-            }
-        });
+        sdk.download(
+            "xx.png",
+                new OnSubProgressListener() {
+                    @Override
+                    public void onProgressChange(Sdk.Point point) {
+                        Log.d("MainActivity", "dowload progress: " + point.x + "," + point.y);
+                        progressBar.setProgress((int) 1);
+                    }
+                }
+        );
 
     }
-
-    public native String stringFromJNI();
-
 }
